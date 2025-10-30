@@ -58,8 +58,8 @@ services:
     container_name: quizzby-nocodb
     restart: unless-stopped
     environment:
-      - NC_DB=pg://postgres:5432?u=nocodb&p=${NOCODB_DB_PASSWORD:-nocodb123}&d=nocodb
-      - NC_AUTH_JWT_SECRET=${NOCODB_JWT_SECRET:-your-jwt-secret-key}
+      - NC_DB=pg://nocodb-postgres:5432?u=nocodb&p=${NOCODB_DB_PASSWORD}&d=nocodb
+      - NC_AUTH_JWT_SECRET=${NOCODB_JWT_SECRET}
       - NC_DISABLE_TELE=true
     volumes:
       - nocodb-data:/usr/app/data
