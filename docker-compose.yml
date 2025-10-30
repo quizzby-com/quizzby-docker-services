@@ -1,0 +1,165 @@
+version: '3.8'
+
+# Master Docker Compose for Quizzby Services
+# This file orchestrates all services together
+
+services:
+  # Reverse Proxy (Traefik)
+  traefik:
+    image: traefik:v3.0
+    container_name: quizzby-traefik
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "8080:8080"  # Traefik dashboard
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./traefik:/etc/traefik:ro
+      - traefik-data:/data
+    environment:
+      - TRAEFIK_API_DASHBOARD=true
+      - TRAEFIK_API_INSECURE=true
+      - TRAEFIK_PROVIDERS_DOCKER=true
+      - TRAEFIK_PROVIDERS_DOCKER_EXPOSEDBYDEFAULT=false
+      - TRAEFIK_ENTRYPOINTS_WEB_ADDRESS=:80
+      - TRAEFIK_ENTRYPOINTS_WEBSECURE_ADDRESS=:443
+    networks:
+      - quizzby-network
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.traefik.rule=Host(`traefik.localhost`)"
+      - "traefik.http.routers.traefik.service=api@internal"
+      - "com.quizzby.service=traefik"
+
+  # Grafana (Monitoring)
+  grafana:
+    image: grafana/grafana:latest
+    container_name: quizzby-grafana
+    restart: unless-stopped
+    environment:
+      - GF_SECURITY_ADMIN_USER=${GRAFANA_ADMIN_USER:-admin}
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-admin123}
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./grafana/config:/etc/grafana:ro
+    networks:
+      - quizzby-network
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.grafana.rule=Host(`grafana.localhost`)"
+      - "traefik.http.services.grafana.loadbalancer.server.port=3000"
+      - "com.quizzby.service=grafana"
+
+  # NocoDB (Database UI)
+  nocodb:
+    image: nocodb/nocodb:latest
+    container_name: quizzby-nocodb
+    restart: unless-stopped
+    environment:
+      - NC_DB=pg://postgres:5432?u=nocodb&p=${NOCODB_DB_PASSWORD:-nocodb123}&d=nocodb
+      - NC_AUTH_JWT_SECRET=${NOCODB_JWT_SECRET:-your-jwt-secret-key}
+      - NC_DISABLE_TELE=true
+    volumes:
+      - nocodb-data:/usr/app/data
+    depends_on:
+      - nocodb-postgres
+    networks:
+      - quizzby-network
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.nocodb.rule=Host(`nocodb.localhost`)"
+      - "traefik.http.services.nocodb.loadbalancer.server.port=8080"
+      - "com.quizzby.service=nocodb"
+
+  # NocoDB Database
+  nocodb-postgres:
+    image: postgres:15-alpine
+    container_name: quizzby-nocodb-db
+    restart: unless-stopped
+    environment:
+      - POSTGRES_DB=nocodb
+      - POSTGRES_USER=nocodb
+      - POSTGRES_PASSWORD=${NOCODB_DB_PASSWORD:-nocodb123}
+    volumes:
+      - nocodb-postgres-data:/var/lib/postgresql/data
+    networks:
+      - quizzby-network
+    labels:
+      - "com.quizzby.service=nocodb-database"
+
+  # Portainer (Docker Management)
+  portainer:
+    image: portainer/portainer-ce:latest
+    container_name: quizzby-portainer
+    restart: unless-stopped
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - portainer-data:/data
+    networks:
+      - quizzby-network
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.portainer.rule=Host(`portainer.localhost`)"
+      - "traefik.http.services.portainer.loadbalancer.server.port=9000"
+      - "com.quizzby.service=portainer"
+
+  # SonarQube (Code Quality)
+  sonarqube:
+    image: sonarqube:community
+    container_name: quizzby-sonarqube
+    restart: unless-stopped
+    environment:
+      - SONAR_JDBC_URL=jdbc:postgresql://sonarqube-postgres:5432/sonarqube
+      - SONAR_JDBC_USERNAME=sonarqube
+      - SONAR_JDBC_PASSWORD=${SONARQUBE_DB_PASSWORD:-sonarqube123}
+    volumes:
+      - sonarqube-data:/opt/sonarqube/data
+      - sonarqube-extensions:/opt/sonarqube/extensions
+      - sonarqube-logs:/opt/sonarqube/logs
+    depends_on:
+      - sonarqube-postgres
+    networks:
+      - quizzby-network
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.sonarqube.rule=Host(`sonarqube.localhost`)"
+      - "traefik.http.services.sonarqube.loadbalancer.server.port=9000"
+      - "com.quizzby.service=sonarqube"
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536
+
+  # SonarQube Database
+  sonarqube-postgres:
+    image: postgres:15-alpine
+    container_name: quizzby-sonarqube-db
+    restart: unless-stopped
+    environment:
+      - POSTGRES_DB=sonarqube
+      - POSTGRES_USER=sonarqube
+      - POSTGRES_PASSWORD=${SONARQUBE_DB_PASSWORD:-sonarqube123}
+    volumes:
+      - sonarqube-postgres-data:/var/lib/postgresql/data
+    networks:
+      - quizzby-network
+    labels:
+      - "com.quizzby.service=sonarqube-database"
+
+volumes:
+  traefik-data:
+  grafana-data:
+  nocodb-data:
+  nocodb-postgres-data:
+  portainer-data:
+  sonarqube-data:
+  sonarqube-extensions:
+  sonarqube-logs:
+  sonarqube-postgres-data:
+
+networks:
+  quizzby-network:
+    driver: bridge
+    name: quizzby-network

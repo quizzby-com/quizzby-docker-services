@@ -1,0 +1,76 @@
+version: '3.8'
+
+services:
+  sonarqube:
+    image: sonarqube:community
+    container_name: quizzby-sonarqube
+    restart: unless-stopped
+    ports:
+      - "9001:9000"
+    environment:
+      - SONAR_JDBC_URL=jdbc:postgresql://postgres:5432/sonarqube
+      - SONAR_JDBC_USERNAME=sonarqube
+      - SONAR_JDBC_PASSWORD=${SONARQUBE_DB_PASSWORD:-sonarqube123}
+      - SONAR_WEB_CONTEXT=${SONAR_WEB_CONTEXT:-/}
+      - SONAR_CE_JAVAOPTS=-Xmx2g -Xms512m
+      - SONAR_WEB_JAVAOPTS=-Xmx1g -Xms512m
+    volumes:
+      - sonarqube-data:/opt/sonarqube/data
+      - sonarqube-extensions:/opt/sonarqube/extensions
+      - sonarqube-logs:/opt/sonarqube/logs
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - quizzby-network
+    labels:
+      - "com.quizzby.service=sonarqube"
+      - "com.quizzby.environment=production"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:9000/api/system/status | grep -q '\"status\":\"UP\"' || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 90s
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536
+
+  postgres:
+    image: postgres:15-alpine
+    container_name: quizzby-sonarqube-db
+    restart: unless-stopped
+    environment:
+      - POSTGRES_DB=sonarqube
+      - POSTGRES_USER=sonarqube
+      - POSTGRES_PASSWORD=${SONARQUBE_DB_PASSWORD:-sonarqube123}
+      - PGDATA=/var/lib/postgresql/data/pgdata
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./init-scripts:/docker-entrypoint-initdb.d:ro
+    networks:
+      - quizzby-network
+    labels:
+      - "com.quizzby.service=sonarqube-database"
+      - "com.quizzby.environment=production"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sonarqube -d sonarqube"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+volumes:
+  sonarqube-data:
+    driver: local
+  sonarqube-extensions:
+    driver: local
+  sonarqube-logs:
+    driver: local
+  postgres-data:
+    driver: local
+
+networks:
+  quizzby-network:
+    external: true
