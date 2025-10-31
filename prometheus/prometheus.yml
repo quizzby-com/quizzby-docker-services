@@ -34,10 +34,3 @@ scrape_configs:
       - targets: ['traefik:8080']
     scrape_interval: 5s
     metrics_path: /metrics
-
-  # Docker daemon metrics (if metrics enabled)
-  - job_name: 'docker'
-    static_configs:
-      - targets: ['host.docker.internal:9323']
-    scrape_interval: 5s
-    metrics_path: /metrics
